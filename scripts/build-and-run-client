@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 yarn build
-rm -f ~/.npmrc
-node ./dist/verdaccio-openid.mjs --registry http://localhost:4873
+"$SCRIPT_DIR/run-client.sh"

@@ -1,0 +1,27 @@
+#!/bin/bash
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Run the `npm whoami` command and capture the output and error
+output=$(npm whoami 2>&1)
+exit_code=$?
+
+# Check the exit code to determine success or failure
+if [ $exit_code -ne 0 ]; then
+    echo "Error occurred:"
+    
+    # Check specific error messages
+    if [[ $output == *"ENEEDAUTH"* ]]; then
+        echo "You need to log in to the npm registry (again)."
+        "$SCRIPT_DIR/run-client"
+    elif [[ $output == *"E401"* ]]; then
+        echo "Authentication error. Token may be expired."
+        "$SCRIPT_DIR/run-client"
+    elif [[ $output == *"ENOTFOUND"* ]]; then
+        echo "Network issue or incorrect registry URL."
+    else
+        echo "Unknown error: $output"
+    fi
+else
+    # Command succeeded; print the username
+    echo "Logged-in user: $output"
+fi

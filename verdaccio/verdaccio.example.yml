@@ -45,9 +45,13 @@ security:
   api:
     jwt:
       sign:
-        expiresIn: 29d
+        expiresIn: 1d
+      verify:
+        algorithm: HS256
   web:
     sign:
       expiresIn: 1h
+    verify:
+      algorithm: HS256
 
 log: {type: stdout, format: pretty, level: http}
