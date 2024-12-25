@@ -41,4 +41,13 @@ middlewares:
   audit:
     enabled: true
 
+security:
+  api:
+    jwt:
+      sign:
+        expiresIn: 29d
+  web:
+    sign:
+      expiresIn: 1h
+
 log: {type: stdout, format: pretty, level: http}
