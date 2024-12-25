@@ -3,9 +3,11 @@
 *.log
 dist/
 node_modules/
-/verdaccio*
+/verdaccio/*
 .npmrc
 .yarnrc
 .history
 package-lock.json
 yarn.lock
+
+!verdaccio/verdaccio.example.yml

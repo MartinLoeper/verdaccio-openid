@@ -1,0 +1,16 @@
+{
+	"name": "Verdaccio OIDC",
+	"image": "mcr.microsoft.com/devcontainers/base:bullseye",
+	"features": {
+		"ghcr.io/devcontainers/features/node:1": {}
+	},
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"GitHub.copilot"
+			]
+		}
+	},
+	"workspaceMount": "source=${localWorkspaceFolder},target=/workspace/verdaccio-openid,type=bind",
+	"workspaceFolder": "/workspace/verdaccio-openid"
+}

@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+yarn build
+rm -f ~/.npmrc
+node ./dist/verdaccio-openid.mjs --registry http://localhost:4873

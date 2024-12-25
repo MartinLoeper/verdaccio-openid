@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+
+if [ ! -f "$SCRIPT_DIR/../verdaccio/verdaccio.yml" ]; then
+    echo "Verdaccio config in verdaccio/verdaccio.yaml not found. Please create it."
+    exit 1
+fi
+
+sudo mkdir -p /verdaccio/storage
+
+sudo chown -R vscode /verdaccio
+
+echo "DONE"
