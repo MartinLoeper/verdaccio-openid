@@ -8,7 +8,11 @@ web:
   enable: true
   title: Verdaccio
 
-auth:          
+auth:         
+  htpasswd:
+    file: /verdaccio/storage/htpasswd
+    algorithm: sha1
+    max_users: 1 
   openid:
     provider-host: https://example.org
     configuration-uri: https://example.org/realms/sample-realm/.well-known/openid-configuration
