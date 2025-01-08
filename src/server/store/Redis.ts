@@ -39,7 +39,7 @@ export default class RedisStore extends BaseStore implements Store {
 
       this.ttl = ttl;
     } else {
-      if (opts?.nodes) {
+      if (opts?.nodes && Array.isArray(opts.nodes) && opts.nodes.length > 1) {
         const { ttl: defaultTTL, ...restDefaultOpts } = defaultOptions;
 
         const {
@@ -59,8 +59,11 @@ export default class RedisStore extends BaseStore implements Store {
         this.ttl = ttl;
       } else {
         const { ttl, nodes: _, ...restOpts } = { ...defaultOptions, ...opts } satisfies RedisConfig;
-        this.redis = new Redis(restOpts);
-
+        if (opts.nodes && Array.isArray(opts.nodes) && opts.nodes.length == 1 && typeof opts.nodes[0] === "string") {
+          this.redis = new Redis(opts.nodes[0], restOpts);
+        } else {
+          this.redis = new Redis(restOpts);
+        }
         this.ttl = ttl;
       }
     }
