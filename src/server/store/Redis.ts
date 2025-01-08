@@ -59,18 +59,11 @@ export default class RedisStore extends BaseStore implements Store {
         this.ttl = ttl;
       } else {
         const { ttl, nodes: _, ...restOpts } = { ...defaultOptions, ...opts } satisfies RedisConfig;
-
         this.redis = new Redis(restOpts);
 
         this.ttl = ttl;
       }
     }
-
-    this.redis.connect().catch((e) => {
-      logger.error({ message: e.message }, "Failed to connect to redis: @{message}");
-
-      process.exit(1);
-    });
   }
 
   private async isKeyExists(key: string): Promise<boolean> {
