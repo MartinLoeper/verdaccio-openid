@@ -1,5 +1,3 @@
-import process from "node:process";
-
 import { defaultSecurity } from "@verdaccio/config";
 import type { Config, PackageAccess as IncorrectPackageAccess, PackageList, Security } from "@verdaccio/types";
 import merge from "deepmerge";
@@ -7,12 +5,40 @@ import { mixed, object, Schema, string } from "yup";
 
 import { plugin, pluginKey } from "@/constants";
 import { CONFIG_ENV_NAME_REGEX } from "@/server/constants";
-import logger from "@/server/logger";
+import { ProviderType } from "@/server/plugin/AuthProvider";
+import { type FileConfig, type InMemoryConfig, type StoreConfigMap, StoreType } from "@/server/store/Store";
 
-type ProviderType = "gitlab";
+import { FileConfigSchema, InMemoryConfigSchema, RedisConfigSchema, RedisStoreConfigHolder } from "./Store";
+import { getEnvironmentValue, getStoreFilePath, handleValidationError } from "./utils";
 
 export interface PackageAccess extends IncorrectPackageAccess {
   unpublish?: string[];
+}
+
+export interface ConfigHolder {
+  providerHost: string;
+  providerType?: ProviderType;
+  configurationUri?: string;
+  issuer?: string;
+  authorizationEndpoint?: string;
+  tokenEndpoint?: string;
+  userinfoEndpoint?: string;
+  jwksUri?: string;
+  scope: string;
+  clientId: string;
+  clientSecret: string;
+  usernameClaim: string;
+  groupsClaim?: string;
+  authorizedGroups: string | string[] | boolean;
+  groupUsers?: Record<string, string[]>;
+  storeType: StoreType;
+
+  urlPrefix: string;
+  secret: string;
+  security: Security;
+  packages: Record<string, PackageAccess>;
+
+  getStoreConfig<T extends StoreType>(storeType: T): StoreConfigMap[T];
 }
 
 export interface OpenIDConfig {
@@ -29,67 +55,13 @@ export interface OpenIDConfig {
   "client-secret"?: string;
   "username-claim"?: string;
   "groups-claim"?: string;
+  "store-type"?: StoreType;
+  "store-config"?: Record<string, unknown> | string;
   "authorized-groups"?: string | string[] | boolean;
   "group-users"?: string | Record<string, string[]>;
 }
 
-export interface ConfigHolder {
-  providerHost: string;
-  providerType?: string;
-  issuer?: string;
-  configurationUri?: string;
-  scope: string;
-  usernameClaim: string;
-  groupsClaim?: string;
-  authorizationEndpoint?: string;
-  tokenEndpoint?: string;
-  userinfoEndpoint?: string;
-  jwksUri?: string;
-  clientId: string;
-  clientSecret: string;
-  urlPrefix: string;
-  packages: Record<string, PackageAccess>;
-}
-
-/**
- * Get the value of an environment variable.
- *
- * @param name - The name of the environment variable.
- * @returns
- */
-function getEnvironmentValue(name: string): unknown {
-  const value = process.env[name];
-
-  if (value === undefined || value === null) return value;
-
-  if (value === "true" || value === "false") {
-    return value === "true";
-  }
-
-  try {
-    const v = JSON.parse(value);
-
-    // Only return the parsed value if it is an object.
-    if (typeof v === "object" && v !== null) {
-      return v;
-    }
-  } catch {
-    // Do nothing
-  }
-
-  return value;
-}
-
-function handleValidationError(error: any, key: string) {
-  const message = error.errors ? error.errors[0] : error.message || error;
-  logger.error(
-    { pluginKey, key, message },
-    `invalid configuration at "auth.@{pluginKey}.@{key}": @{message} — Please check your verdaccio config.`,
-  );
-  process.exit(1);
-}
-
-export class ParsedPluginConfig implements ConfigHolder {
+export default class ParsedPluginConfig implements ConfigHolder {
   constructor(
     private readonly config: OpenIDConfig,
     private readonly verdaccioConfig: Config,
@@ -148,7 +120,7 @@ export class ParsedPluginConfig implements ConfigHolder {
     return this.getConfigValue<ProviderType | undefined>(
       "provider-type",
       string()
-        .oneOf(["gitlab"] satisfies ProviderType[])
+        .oneOf([ProviderType.Gitlab] satisfies ProviderType[])
         .optional(),
     );
   }
@@ -199,18 +171,18 @@ export class ParsedPluginConfig implements ConfigHolder {
 
   public get authorizedGroups() {
     return (
-      this.getConfigValue<unknown>(
+      this.getConfigValue<string | string[] | boolean>(
         "authorized-groups",
         mixed()
           .test({
             name: "is-string-array-or-boolean",
             skipAbsent: true,
-            message: "must be a string[] or a boolean",
+            message: "must be a string, string[] or a boolean",
             test: (value) => {
               if (Array.isArray(value)) {
                 return value.every((item) => typeof item === "string");
               }
-              return typeof value === "boolean";
+              return typeof value === "string" || typeof value === "boolean";
             },
           })
           .optional(),
@@ -237,5 +209,92 @@ export class ParsedPluginConfig implements ConfigHolder {
         })
         .optional(),
     );
+  }
+
+  public get storeType() {
+    return (
+      this.getConfigValue<StoreType>(
+        "store-type",
+        string()
+          .oneOf([StoreType.InMemory, StoreType.Redis, StoreType.File] satisfies StoreType[])
+          .optional(),
+      ) ?? StoreType.InMemory
+    );
+  }
+
+  public getStoreConfig<T extends StoreType>(storeType: T): StoreConfigMap[T] {
+    const configKey: keyof OpenIDConfig = "store-config";
+
+    switch (storeType) {
+      case StoreType.InMemory: {
+        const storeConfig = this.getConfigValue<InMemoryConfig | undefined>(configKey, InMemoryConfigSchema.optional());
+
+        return storeConfig as unknown as StoreConfigMap[T];
+      }
+
+      case StoreType.Redis: {
+        const storeConfig = this.getConfigValue<Record<string, unknown> | string | undefined>(
+          configKey,
+          mixed().test({
+            name: "is-redis-config-or-string",
+            message: "must be a RedisConfig or a string",
+            test: (value) => {
+              if (value === undefined) return true;
+              if (typeof value === "string" && value !== "") {
+                return string().url().isValidSync(value);
+              }
+              if (typeof value === "object" && value !== null) {
+                return RedisConfigSchema.isValidSync(value);
+              }
+              return false;
+            },
+          }),
+        );
+
+        if (storeConfig === undefined) return undefined as StoreConfigMap[T];
+
+        if (typeof storeConfig === "string") {
+          return storeConfig;
+        }
+
+        const configHolder = new RedisStoreConfigHolder(storeConfig, configKey);
+
+        const username = configHolder.username;
+        const password = configHolder.password;
+
+        return { ...storeConfig, username, password } as StoreConfigMap[T];
+      }
+
+      case StoreType.File: {
+        const config = this.getConfigValue<FileConfig>(
+          configKey,
+          mixed().test({
+            name: "is-file-config-or-string",
+            message: "must be a FileConfig or a string",
+            test: (value) => {
+              if (typeof value === "string" && value !== "") {
+                return true;
+              }
+              if (typeof value === "object" && value !== null) {
+                return FileConfigSchema.isValidSync(value);
+              }
+              return false;
+            },
+          }),
+        );
+
+        const configPath = this.verdaccioConfig.self_path || this.verdaccioConfig.configPath;
+
+        if (typeof config === "string") {
+          return getStoreFilePath(configPath, config);
+        }
+
+        return { ...config, dir: getStoreFilePath(configPath, config.dir) } as StoreConfigMap[T];
+      }
+
+      default: {
+        throw new Error(`Unsupported store type: ${storeType}`);
+      }
+    }
   }
 }
